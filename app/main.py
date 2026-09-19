@@ -1,56 +1,73 @@
-from fastapi import FastAPI, Query, HTTPException
+import uuid
+from typing import List, Optional
+from datetime import datetime
+from fastapi import FastAPI, Depends, HTTPException, Query, status
+from pydantic import BaseModel, ConfigDict
+from sqlalchemy.orm import Session
+
 from app.db import SessionLocal, LogModel
-from app.tasks import process_log_task
+from app.tasks import ingest_log_task
 
-app = FastAPI(title="Distributed Logging System")
+app = FastAPI(title="Distributed Log Engine", version="1.0.0")
 
-@app.post("/api/v1/logs", status_code=202)
-def create_log(payload: dict):
-    task = process_log_task.delay(payload)
+# Database dependency
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+# Pydantic Schemas
+class LogCreate(BaseModel):
+    message: str
+    level: str = "INFO"
+
+class LogResponse(BaseModel):
+    id: str
+    message: str
+    level: str
+    timestamp: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+class SearchResponse(BaseModel):
+    count: int
+    results: List[LogResponse]
+
+# Endpoints
+@app.post("/api/v1/logs", status_code=status.HTTP_202_ACCEPTED)
+def create_log(log_data: LogCreate):
+    log_id = str(uuid.uuid4())
+    ingest_log_task.delay(log_id, log_data.message, log_data.level)
     return {
         "status": "queued",
-        "task_id": task.id,
-        "message": "Log entry processing initiated"
+        "log_id": log_id,
+        "message": "Log entry accepted for background processing."
     }
 
-@app.get("/api/v1/search")
-def search_logs(q: str = Query(None), level: str = Query(None)):
-    db = SessionLocal()
-    try:
-        query = db.query(LogModel)
-        if q:
-            query = query.filter(LogModel.message.ilike(f"%{q}%"))
-        if level:
-            query = query.filter(LogModel.level == level.upper())
+@app.get("/api/v1/logs/{log_id}", response_model=LogResponse)
+def get_log(log_id: str, db: Session = Depends(get_db)):
+    log_entry = db.query(LogModel).filter(LogModel.id == log_id).first()
+    if not log_entry:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, 
+            detail=f"Log with ID {log_id} not found."
+        )
+    return log_entry
 
-        results = query.all()
-        return {
-            "count": len(results),
-            "results": [
-                {
-                    "id": log.id,
-                    "message": log.message,
-                    "level": log.level,
-                    "timestamp": log.timestamp.isoformat()
-                } for log in results
-            ]
-        }
-    finally:
-        db.close()
-
-@app.get("/api/v1/logs/{log_id}")
-def get_log(log_id: str):
-    db = SessionLocal()
-    try:
-        log_entry = db.query(LogModel).filter(LogModel.id == log_id).first()
-        if not log_entry:
-            raise HTTPException(status_code=404, detail="Log entry not found")
+@app.get("/api/v1/search", response_model=SearchResponse)
+def search_logs(
+    q: Optional[str] = Query(None, description="Search keyword in log message"),
+    level: Optional[str] = Query(None, description="Filter by log level (e.g. INFO, ERROR)"),
+    db: Session = Depends(get_db)
+):
+    query = db.query(LogModel)
+    
+    if q:
+        query = query.filter(LogModel.message.ilike(f"%{q}%"))
+    if level:
+        query = query.filter(LogModel.level.ilike(level))
         
-        return {
-            "id": log_entry.id,
-            "message": log_entry.message,
-            "level": log_entry.level,
-            "timestamp": log_entry.timestamp.isoformat()
-        }
-    finally:
-        db.close()
+    results = query.order_by(LogModel.timestamp.desc()).all()
+    return SearchResponse(count=len(results), results=results)

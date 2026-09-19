@@ -1,5 +1,5 @@
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import Column, String, DateTime, Text, create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
 
@@ -15,6 +15,6 @@ class LogModel(Base):
     id = Column(String, primary_key=True, index=True)
     message = Column(Text, nullable=False)
     level = Column(String, nullable=False, index=True)
-    timestamp = Column(DateTime, default=datetime.utcnow, index=True)
+    timestamp = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), index=True)
 
 Base.metadata.create_all(bind=engine)
