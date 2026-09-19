@@ -1,15 +1,26 @@
-# Distributed Log Engine
+# 🚀 Distributed Log Engine
 
-A high-performance, asynchronous log ingestion and search system built with FastAPI, Celery, Redis, and PostgreSQL.
+![Python](https://img.shields.io/badge/Python-3.11+-blue.svg)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.100+-009688.svg)
+![Celery](https://img.shields.io/badge/Celery-Async-green.svg)
+![Redis](https://img.shields.io/badge/Redis-Broker-red.svg)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-Database-336791.svg)
+![Docker](https://img.shields.io/badge/Docker-Compose-2496ED.svg)
 
-## Architecture
+A high-performance, asynchronous log ingestion and search system engineered with **FastAPI**, **Celery**, **Redis**, and **PostgreSQL**. Built to handle decoupled task processing and fast log indexing in containerized environments.
+
+---
+
+## 🏗️ Architecture & Data Flow
 
 ```mermaid
 flowchart LR
-    A[Client / HTTP Request] -->|POST /api/v1/logs| B(FastAPI API Gateway)
-    B -->|Push Task| C[(Redis Broker)]
-    C -->|Worker Fetch| D[Celery Async Workers]
-    D -->|Persist Log| E[(PostgreSQL Database)]
+    Client[Client / Application] -->|1. POST /api/v1/logs| API[FastAPI Gateway]
+    API -->|2. Dispatch Task| Redis[(Redis Broker)]
+    Redis -->|3. Consume Task| Worker[Celery Worker]
+    Worker -->|4. Persist Log| DB[(PostgreSQL DB)]
+    Client -->|5. GET /api/v1/search| API
+    API -->|6. Query Data| DB
 ```
 
 * **FastAPI**: Handles HTTP endpoints for ingesting, querying, and searching logs.
@@ -17,6 +28,8 @@ flowchart LR
 * **Redis**: Acts as the message broker for Celery task queues.
 * **PostgreSQL**: Persists structured log data with UUID primary keys.
 * **Docker Compose**: Orchestrates all services into containerized environments.
+
+---
 
 ## Quick Start
 
